@@ -1,4 +1,4 @@
-﻿/* ================================================================
+/* ================================================================
    Smart Wardrobe — frontend application logic
    Talks to the FastAPI backend in api.py. No fake data, no hardcoded
    outfit results — every screen is backed by a real endpoint.
@@ -10,7 +10,12 @@
   
   const OCCASIONS = ['casual', 'college', 'travel', 'office', 'formal', 'wedding', 'party', 'date', 'workout'];
   
+  const TOKEN_KEY = 'wardrobe_auth_token';
+  const USER_KEY = 'wardrobe_current_user';
+
   const state = {
+    currentUser: null,
+    usersList: [],
     wardrobe: [],
     stats: null,
     favorites: [],
@@ -18,7 +23,7 @@
     history: [],
     modelStatus: null,
     backendOnline: null,
-    closet: { query: '', group: 'all', sort: 'recent' },
+    closet: { query: '', group: 'all', occasion: 'all', sort: 'recent' },
     stylist: { occasion: 'casual', temperature: 24, rain: false, outfits: [], activeIndex: 0 },
     calendarView: new Date(),
     pendingUpload: null, // { file, previewUrl, item, classification }
@@ -36,6 +41,10 @@
   
   async function apiRequest(method, path, { json, form } = {}) {
     const opts = { method, headers: {} };
+    const token = localStorage.getItem(TOKEN_KEY) || (state.currentUser ? String(state.currentUser.id) : '1');
+    if (token) {
+      opts.headers['Authorization'] = `Bearer ${token}`;
+    }
     if (json !== undefined) {
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(json);
@@ -121,52 +130,17 @@
   });
   
   /* ----------------------------------------------------------------
-     STATUS PILL / BACKEND HEALTH
+     BACKEND HEALTH CHECK
      ---------------------------------------------------------------- */
-  
-  const statusDot = document.getElementById('statusDot');
-  const statusText = document.getElementById('statusText');
-  const statusPill = document.getElementById('statusPill');
-  const apiBaseInput = document.getElementById('apiBaseInput');
-  
-  statusPill.addEventListener('click', (e) => {
-    if (e.target === apiBaseInput) return;
-    apiBaseInput.style.display = apiBaseInput.style.display === 'none' ? 'inline-block' : 'none';
-    apiBaseInput.value = CONFIG.apiBase;
-    if (apiBaseInput.style.display !== 'none') apiBaseInput.focus();
-  });
-  apiBaseInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      CONFIG.apiBase = apiBaseInput.value.trim().replace(/\/$/, '') || CONFIG.apiBase;
-      localStorage.setItem('wardrobe_api_base', CONFIG.apiBase);
-      apiBaseInput.style.display = 'none';
-      toast('API address updated');
-      checkHealth();
-    }
-  });
-  apiBaseInput.addEventListener('click', (e) => e.stopPropagation());
   
   async function checkHealth() {
     try {
       const status = await api.get('/api/status');
       state.backendOnline = true;
       state.modelStatus = status.model_status;
-      const mode = status.model_status && status.model_status.ranking_mode;
-      if (mode === 'gemini') {
-        statusDot.className = 'status-dot ok';
-        statusText.textContent = 'Gemini AI online';
-      } else if (mode === 'rule_based') {
-        statusDot.className = 'status-dot ok';
-        statusText.textContent = 'AI online';
-      } else {
-        statusDot.className = 'status-dot warn';
-        statusText.textContent = 'Backend online — classifier not ready';
-      }
     } catch (err) {
       state.backendOnline = false;
       state.modelStatus = null;
-      statusDot.className = 'status-dot';
-      statusText.textContent = 'Backend offline';
     }
     renderHomeBanner();
     renderStylistBanner();
@@ -226,6 +200,7 @@
   
   async function refreshDashboard() {
     await checkHealth();
+    renderUserBar();
     const grid = document.getElementById('statGrid');
     try {
       const stats = await api.get('/api/wardrobe/stats');
@@ -239,7 +214,8 @@
       `;
   
       const recentGrid = document.getElementById('recentGrid');
-      if (!stats.recent_items.length) {
+      const recent = stats.recent_items || [];
+      if (!recent.length) {
         recentGrid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
           <span class="serif">The closet is empty</span>
           Add your first piece to get started.
@@ -247,19 +223,25 @@
         </div>`;
         recentGrid.querySelector('[data-goto]').addEventListener('click', () => goto('add'));
       } else {
-        recentGrid.innerHTML = stats.recent_items.map((item) => garmentCardHtml(item, { newBadge: true })).join('');
-        attachGarmentClickHandlers(recentGrid, stats.recent_items);
+        recentGrid.innerHTML = recent.map((item) => garmentCardHtml(item, { newBadge: true })).join('');
+        attachGarmentClickHandlers(recentGrid, recent);
       }
   
       const breakdown = document.getElementById('breakdownList');
-      const groups = Object.entries(stats.by_group).sort((a, b) => b[1] - a[1]);
+      const byGroup = {
+        top: stats.tops || 0,
+        bottom: stats.bottoms || 0,
+        outerwear: stats.outerwear || 0,
+        "one-piece": stats.one_piece || 0,
+      };
+      const groups = Object.entries(byGroup).sort((a, b) => b[1] - a[1]);
       const max = Math.max(1, ...groups.map((g) => g[1]));
       if (!groups.length) {
         breakdown.innerHTML = '';
       } else {
         breakdown.innerHTML = groups.map(([group, count]) => `
           <div class="breakdown-row">
-            <div class="bd-label">${group}</div>
+            <div class="bd-label" style="text-transform:capitalize;">${group}</div>
             <div class="bd-bar-wrap"><div class="bd-bar" style="width:${(count / max) * 100}%"></div></div>
             <div class="bd-count">${count}</div>
           </div>
@@ -276,6 +258,7 @@
   
   function garmentCardHtml(item, { index, newBadge } = {}) {
     const isNew = newBadge && item.added_at && (Date.now() - new Date(item.added_at).getTime() < 1000 * 60 * 60 * 24 * 3);
+    const primaryOcc = (item.occasions && item.occasions[0]) || (item.tags && item.tags[0]) || '';
     return `
       <div class="garment" data-id="${escapeHtml(item.id)}">
         <div class="thumb-wrap">
@@ -285,7 +268,10 @@
         </div>
         <div class="caption">
           <span class="gname">${escapeHtml(item.name)}</span>
-          <span class="group tracked">${escapeHtml(item.group)}</span>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+            <span class="group tracked">${escapeHtml(item.group)}</span>
+            ${primaryOcc ? `<span class="occ-badge">${escapeHtml(primaryOcc)}</span>` : ''}
+          </div>
         </div>
       </div>`;
   }
@@ -325,16 +311,24 @@
   }
   
   function renderCloset() {
-    const { query, group, sort } = state.closet;
+    const { query, group, sort, occasion } = state.closet;
     let items = [...state.wardrobe];
   
     if (group !== 'all') items = items.filter((i) => i.group === group);
+    if (occasion && occasion !== 'all') {
+      const occ = occasion.toLowerCase();
+      items = items.filter((i) =>
+        (i.occasions && i.occasions.map((o) => o.toLowerCase()).includes(occ)) ||
+        (i.tags && i.tags.map((t) => t.toLowerCase()).includes(occ))
+      );
+    }
     if (query) {
       const q = query.toLowerCase();
       items = items.filter((i) =>
         i.name.toLowerCase().includes(q) ||
         i.category.toLowerCase().includes(q) ||
-        i.tags.some((t) => t.toLowerCase().includes(q))
+        (i.tags && i.tags.some((t) => t.toLowerCase().includes(q))) ||
+        (i.occasions && i.occasions.some((o) => o.toLowerCase().includes(q)))
       );
     }
   
@@ -346,7 +340,7 @@
     if (!items.length) {
       grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
         <span class="serif">Nothing here</span>
-        ${state.wardrobe.length ? 'Try a different search or filter.' : 'Your closet is empty — add your first piece.'}
+        ${state.wardrobe.length ? `No pieces found for "${escapeHtml(occasion !== 'all' ? occasion : (group !== 'all' ? group : 'this filter'))}". Try selecting "All" or a different occasion.` : 'Your closet is empty — add your first piece.'}
         ${state.wardrobe.length ? '' : '<div><button class="btn btn-primary" data-goto="add">+ Add Item</button></div>'}
       </div>`;
       const addBtn = grid.querySelector('[data-goto]');
@@ -370,6 +364,19 @@
     state.closet.group = btn.dataset.group;
     renderCloset();
   });
+
+  const occFilterBar = document.getElementById('closetOccasionFilter');
+  if (occFilterBar) {
+    occFilterBar.addEventListener('click', (e) => {
+      const btn = e.target.closest('.occasion-chip');
+      if (!btn) return;
+      occFilterBar.querySelectorAll('.occasion-chip').forEach((c) => c.classList.remove('selected'));
+      btn.classList.add('selected');
+      state.closet.occasion = btn.dataset.occ;
+      renderCloset();
+    });
+  }
+
   document.getElementById('closetSort').addEventListener('change', (e) => {
     state.closet.sort = e.target.value;
     renderCloset();
@@ -630,6 +637,7 @@
      AI STYLIST
      ---------------------------------------------------------------- */
   
+  let stylistRequestSeq = 0;
   const occasionGrid = document.getElementById('occasionGrid');
   occasionGrid.innerHTML = OCCASIONS.map((o) => `<button class="occasion-chip ${o === state.stylist.occasion ? 'selected' : ''}" data-occasion="${o}">${o}</button>`).join('');
   occasionGrid.addEventListener('click', (e) => {
@@ -638,6 +646,7 @@
     state.stylist.occasion = btn.dataset.occasion;
     occasionGrid.querySelectorAll('.occasion-chip').forEach((c) => c.classList.remove('selected'));
     btn.classList.add('selected');
+    generateOutfits();
   });
   
   const tempRange = document.getElementById('tempRange');
@@ -683,9 +692,10 @@
   generateBtn.addEventListener('click', generateOutfits);
   
   async function generateOutfits() {
+    const seq = ++stylistRequestSeq;
     const resultsCol = document.getElementById('resultsCol');
     generateBtn.disabled = true;
-    generateBtn.textContent = 'Composing outfits…';
+    generateBtn.textContent = 'Composing look…';
     resultsCol.innerHTML = `
       <div class="featured-card"><div class="featured-body">
         <div class="skeleton" style="height:220px;margin-bottom:18px;"></div>
@@ -700,6 +710,8 @@
         rain: state.stylist.rain,
       };
       const data = await api.post('/api/outfits/generate', payload);
+
+      if (seq !== stylistRequestSeq) return;
   
       if (data.error) {
         resultsCol.innerHTML = `<div class="banner"><strong>Couldn't build a look</strong>${escapeHtml(data.error)}
@@ -721,10 +733,13 @@
       state.stylist.activeIndex = 0;
       renderStylistResults();
     } catch (err) {
+      if (seq !== stylistRequestSeq) return;
       resultsCol.innerHTML = `<div class="banner"><strong>Something went wrong</strong>${escapeHtml(err.message)}</div>`;
     } finally {
-      generateBtn.disabled = false;
-      generateBtn.textContent = 'Build the look';
+      if (seq === stylistRequestSeq) {
+        generateBtn.disabled = false;
+        generateBtn.textContent = 'Build the look';
+      }
     }
   }
   
@@ -746,7 +761,8 @@
           <div class="featured-imgs">
             ${outfit.items.map((it) => `
               <div class="piece">
-                <img src="${resolveUrl(it.url)}" alt="${escapeHtml(it.category || 'garment')}" />
+                <img src="${resolveUrl(it.url)}" alt="${escapeHtml(it.name || it.category || 'garment')}" />
+                <div class="piece-name">${escapeHtml(it.name || '')}</div>
                 <div class="piece-cat">${escapeHtml(it.category || '')}</div>
               </div>`).join('')}
           </div>
@@ -824,14 +840,24 @@
       const date = resultsCol.querySelector('#planDateInput').value;
       if (!date) return;
       try {
-        await api.post('/api/calendar', {
+        const res = await api.post('/api/calendar', {
           date,
           item_ids: outfit.item_ids,
           items: outfit.items,
           occasion: state.stylist.occasion,
           compatibility_score: outfit.compatibility_score,
+          reason: outfit.explanation || '',
           worn: false,
         });
+        state.calendar[date] = (res && res.item) || {
+          key: date,
+          date,
+          occasion: state.stylist.occasion,
+          items: outfit.items,
+          item_ids: outfit.item_ids,
+          reason: outfit.explanation || '',
+          worn: false,
+        };
         toast(`Planned for ${date}`, 'success');
         dateInline.classList.remove('open');
       } catch (err) {
@@ -858,6 +884,16 @@
     renderCalendar();
   }
   
+  function getEntryItems(entry) {
+    if (!entry) return [];
+    const raw = (entry.items && entry.items.length ? entry.items : (entry.outfit && entry.outfit.items)) || [];
+    if (raw.length) return raw;
+    if (entry.item_ids && entry.item_ids.length && state.wardrobe.length) {
+      return state.wardrobe.filter((w) => entry.item_ids.includes(w.id));
+    }
+    return [];
+  }
+
   async function refreshCalendar() {
     try {
       const [entries] = await Promise.all([api.get('/api/calendar')]);
@@ -900,15 +936,19 @@
     for (let day = 1; day <= daysInMonth; day++) {
       const key = dateKey(year, month, day);
       const entry = state.calendar[key];
+      const plannedItems = getEntryItems(entry);
       const isToday = key === todayKey;
       html += `
-        <div class="cal-cell ${isToday ? 'today' : ''}" data-date="${key}">
-          <div class="daynum">${day}</div>
+        <div class="cal-cell ${isToday ? 'today' : ''} ${entry ? 'has-plan' : ''}" data-date="${key}">
+          <div class="daynum">
+            <span>${day}</span>
+            ${entry ? (entry.worn ? '<span class="cal-worn-badge tracked">Worn</span>' : `<span style="font-size:9px;color:var(--scarlet);font-weight:600;" class="tracked">${escapeHtml(entry.occasion || 'Planned')}</span>`) : ''}
+          </div>
           ${entry ? `
             <div class="cal-thumbs">
-              ${(entry.items || []).slice(0, 3).map((it) => `<img src="${resolveUrl(it.url)}" />`).join('')}
+              ${plannedItems.slice(0, 3).map((it) => `<img src="${resolveUrl(it.url)}" alt="${escapeHtml(it.name || it.category || 'Saved dress')}" title="${escapeHtml(it.name || '')}" />`).join('')}
             </div>
-            ${entry.worn ? '<span class="cal-worn-badge tracked">Worn</span>' : `<span style="font-size:9px;color:var(--charcoal-soft);" class="tracked">Planned</span>`}
+            ${plannedItems[0] && plannedItems[0].name ? `<div class="cal-dress-label" title="${escapeHtml(plannedItems.map((i) => i.name).join(' + '))}">${escapeHtml(plannedItems[0].name)}</div>` : ''}
           ` : ''}
         </div>`;
     }
@@ -930,11 +970,22 @@
     title.textContent = prettyDate;
   
     if (entry) {
+      const plannedItems = getEntryItems(entry);
+      const reasonText = entry.reason || (entry.outfit && entry.outfit.reason) || '';
       sub.textContent = entry.occasion ? `Planned for ${entry.occasion}` : 'Planned outfit';
       body.innerHTML = `
-        <div class="featured-imgs">
-          ${(entry.items || []).map((it) => `<div class="piece"><img src="${resolveUrl(it.url)}" /><div class="piece-cat">${escapeHtml(it.category || '')}</div></div>`).join('')}
+        <div style="font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--charcoal-soft); margin-bottom:10px; font-weight:600;">
+          Saved Dress / Outfit (${plannedItems.length} ${plannedItems.length === 1 ? 'piece' : 'pieces'})
         </div>
+        <div class="featured-imgs">
+          ${plannedItems.map((it) => `
+            <div class="piece">
+              <img src="${resolveUrl(it.url)}" alt="${escapeHtml(it.name || it.category || 'Saved dress')}" />
+              <div class="piece-name">${escapeHtml(it.name || 'Saved Dress')}</div>
+              <div class="piece-cat">${escapeHtml(it.category || it.group || '')}</div>
+            </div>`).join('')}
+        </div>
+        ${reasonText ? `<div class="explanation" style="margin-bottom:16px;">"${escapeHtml(reasonText)}"</div>` : ''}
         <div class="worn-toggle-row">
           <span style="font-size:12px;">Mark as worn</span>
           <label class="switch"><input type="checkbox" id="wornCheckbox" ${entry.worn ? 'checked' : ''} /><span class="track"></span></label>
@@ -987,21 +1038,23 @@
     title.textContent = 'Plan an outfit';
     sub.textContent = key;
   
-    let mode = 'favorites';
-    let selectedFavorite = null;
-    let selectedItems = new Set();
-  
     await loadWardrobe();
     try {
       const favData = await api.get('/api/favorites');
       state.favorites = favData.items || [];
     } catch (_) { /* keep cached */ }
+
+    let mode = state.favorites.length ? 'favorites' : 'manual';
+    let selectedFavorite = state.favorites.length ? state.favorites[0].id : null;
+    const existingEntry = state.calendar[key];
+    const existingIds = getEntryItems(existingEntry).map((i) => i.id).filter(Boolean);
+    let selectedItems = new Set(existingIds);
   
     function render() {
       body.innerHTML = `
         <div class="tab-row">
           <button class="tab-btn ${mode === 'favorites' ? 'active' : ''}" data-mode="favorites">From Favorites</button>
-          <button class="tab-btn ${mode === 'manual' ? 'active' : ''}" data-mode="manual">Pick items manually</button>
+          <button class="tab-btn ${mode === 'manual' ? 'active' : ''}" data-mode="manual">Pick from Closet</button>
         </div>
         <div id="pickerBody"></div>
       `;
@@ -1010,12 +1063,12 @@
       const pickerBody = body.querySelector('#pickerBody');
       if (mode === 'favorites') {
         if (!state.favorites.length) {
-          pickerBody.innerHTML = `<div class="empty-state">No saved favorites yet — try "Pick items manually", or save a look from the AI Stylist first.</div>`;
+          pickerBody.innerHTML = `<div class="empty-state">No saved favorites yet — switch to "Pick from Closet", or save a look from the AI Stylist first.</div>`;
         } else {
           pickerBody.innerHTML = state.favorites.map((f) => `
             <div class="look-option ${selectedFavorite === f.id ? 'chosen' : ''}" data-id="${f.id}">
               <div class="mini-imgs">${(f.items || []).slice(0, 3).map((it) => `<img src="${resolveUrl(it.url)}" />`).join('')}</div>
-              <div class="meta"><b>${escapeHtml(f.occasion || 'Outfit')}</b>${f.compatibility_score ? Math.round(f.compatibility_score * 100) + '% match' : ''}</div>
+              <div class="meta"><b>${escapeHtml(f.occasion || 'Outfit')}</b>${(f.items || []).map((it) => it.name).filter(Boolean).join(' + ')}</div>
             </div>`).join('');
           pickerBody.querySelectorAll('.look-option').forEach((el) => el.addEventListener('click', () => {
             selectedFavorite = el.dataset.id;
@@ -1024,8 +1077,9 @@
         }
       } else {
         pickerBody.innerHTML = `<div class="pick-item-grid">${state.wardrobe.map((it) => `
-          <div class="pick-item ${selectedItems.has(it.id) ? 'selected' : ''}" data-id="${it.id}">
-            <img src="${resolveUrl(it.url)}" />
+          <div class="pick-item ${selectedItems.has(it.id) ? 'selected' : ''}" data-id="${it.id}" title="${escapeHtml(it.name || '')}">
+            <img src="${resolveUrl(it.url)}" alt="${escapeHtml(it.name || '')}" />
+            <div class="pick-name">${escapeHtml(it.name || '')}</div>
           </div>`).join('')}</div>`;
         pickerBody.querySelectorAll('.pick-item').forEach((el) => el.addEventListener('click', () => {
           const id = el.dataset.id;
@@ -1042,18 +1096,19 @@
       if (mode === 'favorites') {
         const fav = state.favorites.find((f) => f.id === selectedFavorite);
         if (!fav) { toast('Choose a favorite first', 'error'); return; }
-        payload = { date: key, item_ids: fav.item_ids, items: fav.items, occasion: fav.occasion, compatibility_score: fav.compatibility_score, worn: false };
+        payload = { date: key, item_ids: fav.item_ids, items: fav.items, occasion: fav.occasion || 'casual', compatibility_score: fav.compatibility_score, reason: fav.explanation || '', worn: false };
       } else {
         if (!selectedItems.size) { toast('Select at least one item', 'error'); return; }
         const items = state.wardrobe.filter((w) => selectedItems.has(w.id));
-        payload = { date: key, item_ids: items.map((i) => i.id), items, worn: false };
+        const inferredOcc = (items[0] && items[0].occasions && items[0].occasions[0]) || 'casual';
+        payload = { date: key, item_ids: items.map((i) => i.id), items, occasion: inferredOcc, worn: false };
       }
       try {
         await api.post('/api/calendar', payload);
         const entries = await api.get('/api/calendar');
         state.calendar = entries.items || {};
-        closeModal();
         renderCalendar();
+        openDayModal(key);
         toast('Outfit planned', 'success');
       } catch (err) {
         toast(`Couldn't plan outfit: ${err.message}`, 'error');
@@ -1180,59 +1235,397 @@
   }
   
   /* ----------------------------------------------------------------
-     WELCOME SCREEN
+     MULTI-USER & ACCOUNT MANAGEMENT
      ---------------------------------------------------------------- */
-  
-  const NAME_KEY = 'wardrobe_user_name';
-  
-  function initWelcomeScreen() {
-    const screen = document.getElementById('welcomeScreen');
-    const nameInput = document.getElementById('welcomeNameInput');
-    const enterBtn = document.getElementById('welcomeEnterBtn');
-    const enterLabel = document.getElementById('welcomeEnterLabel');
-  
-    document.body.classList.add('pre-entry');
-  
-    const savedName = (localStorage.getItem(NAME_KEY) || '').trim();
-    if (savedName) {
-      nameInput.value = savedName;
-      enterLabel.textContent = `Continue as ${savedName}`;
+
+  function renderUserBar() {
+    const user = state.currentUser;
+    if (!user) return;
+
+    const navAvatar = document.getElementById('navUserAvatar');
+    const navName = document.getElementById('navUserName');
+    const greeting = document.getElementById('dashboardGreeting');
+
+    if (navAvatar) navAvatar.textContent = (user.name || user.username || 'U')[0].toUpperCase();
+    if (navName) navName.textContent = user.name || user.username;
+
+    if (greeting) {
+      greeting.textContent = `Good to see you, ${user.name.split(' ')[0]}. Here is your wardrobe.`;
     }
-  
-    function applyGreeting() {
-      const name = nameInput.value.trim();
-      const greeting = document.getElementById('dashboardGreeting');
-      if (name) {
-        localStorage.setItem(NAME_KEY, name);
-        if (greeting) greeting.textContent = `Good to see you, ${name}. What are we wearing today?`;
-      } else {
-        localStorage.removeItem(NAME_KEY);
-        if (greeting) greeting.textContent = 'Good to see you. What are we wearing today?';
+
+    const personaBanner = document.getElementById('dashboardPersonaBanner');
+    const userBio = document.getElementById('bannerUserBio');
+    const userDetails = document.getElementById('bannerUserDetails');
+
+    if (personaBanner) {
+      personaBanner.style.display = 'flex';
+      if (userBio) userBio.textContent = `“${user.bio || 'Curated wardrobe collection.'}”`;
+      if (userDetails) {
+        const colors = Array.isArray(user.preferred_colors) ? user.preferred_colors.join(', ') : (user.preferred_colors || '');
+        userDetails.innerHTML = `
+          <span><strong>Role:</strong> ${escapeHtml(user.role || 'Member')}</span>
+          ${colors ? `<span><strong>Palette:</strong> ${escapeHtml(colors)}</span>` : ''}
+          <span><strong>Temp Pref:</strong> ${escapeHtml(user.temp_pref || 'Balanced')}</span>
+        `;
       }
     }
-  
-    function enter() {
-      applyGreeting();
-      screen.classList.add('leaving');
-      document.body.classList.remove('pre-entry');
-      setTimeout(() => screen.classList.add('hidden'), 600);
-    }
-  
-    enterBtn.addEventListener('click', enter);
-    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') enter(); });
-  
-    // Pre-fill the dashboard greeting immediately if we already know the name,
-    // so it's correct the instant the welcome screen fades out.
-    applyGreeting();
   }
-  
+
+  async function loadUsers() {
+    try {
+      const data = await api.get('/api/auth/users');
+      state.usersList = data.users || [];
+    } catch (err) {
+      console.warn("Could not load users:", err);
+    }
+  }
+
+  function clearUserSessionState() {
+    state.wardrobe = [];
+    state.stats = null;
+    state.favorites = [];
+    state.calendar = {};
+    state.history = [];
+    state.stylist.outfits = [];
+    state.stylist.activeIndex = 0;
+    state.pendingUpload = null;
+
+    const rackGrid = document.getElementById('rackGrid');
+    if (rackGrid) rackGrid.innerHTML = '';
+    const recentGrid = document.getElementById('recentGrid');
+    if (recentGrid) recentGrid.innerHTML = '';
+    const resultsCol = document.getElementById('resultsCol');
+    if (resultsCol) {
+      resultsCol.innerHTML = `<div class="empty-state">
+        <span class="serif">No looks yet</span>
+        Set the occasion and temperature, then build.
+      </div>`;
+    }
+  }
+
+  function showWelcomeAuthMessage(message, type = 'error') {
+    const box = document.getElementById('welcomeAuthMsg');
+    if (!box) return;
+    if (!message) {
+      box.style.display = 'none';
+      box.textContent = '';
+      box.className = 'welcome-auth-msg';
+      return;
+    }
+    box.textContent = message;
+    box.className = `welcome-auth-msg ${type === 'success' ? 'success' : ''}`;
+    box.style.display = 'block';
+  }
+
+  async function loginUserAccount(username, password) {
+    try {
+      showWelcomeAuthMessage('');
+      const res = await api.post('/api/auth/login', { username, password });
+      clearUserSessionState();
+      state.currentUser = res.user;
+      localStorage.setItem(TOKEN_KEY, String(res.user.id));
+      localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+      toast(`Signed in as ${res.user.name}`, 'success');
+      renderUserBar();
+      await loadUsers();
+
+      // Always land on Home when signing in
+      goto('home');
+      return res.user;
+    } catch (err) {
+      showWelcomeAuthMessage(`Sign in failed: ${err.message}`, 'error');
+      toast(`Login failed: ${err.message}`, 'error');
+      throw err;
+    }
+  }
+
+  async function signupUserAccount(name, username, stylePersona, password) {
+    try {
+      showWelcomeAuthMessage('');
+      const res = await api.post('/api/auth/signup', {
+        name,
+        username,
+        password,
+        style_persona: stylePersona || 'Personal & Chic'
+      });
+      clearUserSessionState();
+      state.currentUser = res.user;
+      localStorage.setItem(TOKEN_KEY, String(res.user.id));
+      localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+      toast(`Account created! Welcome, ${res.user.name}`, 'success');
+      renderUserBar();
+      await loadUsers();
+
+      goto('home');
+      return res.user;
+    } catch (err) {
+      showWelcomeAuthMessage(`Sign up failed: ${err.message}`, 'error');
+      toast(`Sign up failed: ${err.message}`, 'error');
+      throw err;
+    }
+  }
+
+  let welcomeTabController = null;
+
+  function logout(initialTab = 'signin') {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    state.currentUser = null;
+    clearUserSessionState();
+    showWelcomeAuthMessage('');
+
+    // Reset active room & nav tab to Home so next sign-in always starts on Home
+    document.querySelectorAll('.room').forEach((r) => r.classList.remove('active'));
+    document.querySelectorAll('.masthead-nav button').forEach((b) => b.classList.remove('active'));
+    const homeRoom = document.getElementById('room-home');
+    const homeNav = document.querySelector('.masthead-nav button[data-room="home"]');
+    if (homeRoom) homeRoom.classList.add('active');
+    if (homeNav) homeNav.classList.add('active');
+
+    // Clear login inputs
+    const loginUser = document.getElementById('loginUsernameInput');
+    const loginPass = document.getElementById('loginPasswordInput');
+    if (loginUser) loginUser.value = '';
+    if (loginPass) loginPass.value = '';
+
+    // Show sign-in / sign-up screen
+    const screen = document.getElementById('welcomeScreen');
+    if (screen) {
+      screen.classList.remove('leaving');
+      screen.classList.remove('hidden');
+    }
+    document.body.classList.add('pre-entry');
+
+    if (welcomeTabController) {
+      if (initialTab === 'signup') {
+        welcomeTabController.showSignUp(true);
+      } else {
+        welcomeTabController.showSignIn();
+      }
+    }
+
+    // Reset avatar and user display in nav
+    const avatar = document.getElementById('navUserAvatar');
+    const nameEl = document.getElementById('navUserName');
+    if (avatar) avatar.textContent = '—';
+    if (nameEl) nameEl.textContent = 'Account Sign In';
+
+    // Clear views
+    const rackGrid = document.getElementById('rackGrid');
+    if (rackGrid) rackGrid.innerHTML = '';
+    const recentGrid = document.getElementById('recentGrid');
+    if (recentGrid) recentGrid.innerHTML = '';
+    const resultsCol = document.getElementById('resultsCol');
+    if (resultsCol) resultsCol.innerHTML = '';
+  }
+
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      logout('signin');
+      toast('Logged out successfully', 'info');
+    });
+  }
+
+  const navSignUpBtn = document.getElementById('navSignUpBtn');
+  if (navSignUpBtn) {
+    navSignUpBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      logout('signup');
+    });
+  }
+
+  const bannerLogoutBtn = document.getElementById('bannerLogoutBtn');
+  if (bannerLogoutBtn) {
+    bannerLogoutBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      logout('signin');
+      toast('Logged out successfully', 'info');
+    });
+  }
+
+  /* ----------------------------------------------------------------
+     ACCOUNT SIGN IN & SIGN UP SCREEN
+     ---------------------------------------------------------------- */
+
+  function initWelcomeScreen() {
+    const screen = document.getElementById('welcomeScreen');
+    const tabSignIn = document.getElementById('tabSignIn');
+    const tabSignUp = document.getElementById('tabSignUp');
+    const signInForm = document.getElementById('signInForm');
+    const signUpForm = document.getElementById('signUpForm');
+
+    const loginUser = document.getElementById('loginUsernameInput');
+    const loginPass = document.getElementById('loginPasswordInput');
+    const loginBtn = document.getElementById('welcomeLoginBtn');
+
+    const signupName = document.getElementById('signupNameInput');
+    const signupUser = document.getElementById('signupUsernameInput');
+    const signupPass = document.getElementById('signupPasswordInput');
+    const signupBtn = document.getElementById('welcomeSignupBtn');
+
+    const linkToSignUp = document.getElementById('linkToSignUp');
+    const linkToSignIn = document.getElementById('linkToSignIn');
+
+    const eyebrow = document.getElementById('welcomeEyebrow');
+    const tagline = document.getElementById('welcomeTagline');
+
+    function showSignIn() {
+      showWelcomeAuthMessage('');
+      if (tabSignIn) tabSignIn.classList.add('active');
+      if (tabSignUp) tabSignUp.classList.remove('active');
+      if (signInForm) signInForm.style.display = 'flex';
+      if (signUpForm) signUpForm.style.display = 'none';
+      if (eyebrow) eyebrow.textContent = 'Account Sign In';
+      if (tagline) tagline.textContent = 'Sign in to your personal wardrobe account.';
+      if (loginUser) loginUser.focus();
+    }
+
+    function showSignUp(clearFields = false) {
+      showWelcomeAuthMessage('');
+      if (tabSignUp) tabSignUp.classList.add('active');
+      if (tabSignIn) tabSignIn.classList.remove('active');
+      if (signUpForm) signUpForm.style.display = 'flex';
+      if (signInForm) signInForm.style.display = 'none';
+      if (eyebrow) eyebrow.textContent = 'Create Account';
+      if (tagline) tagline.textContent = 'Create your personal wardrobe account.';
+
+      if (clearFields) {
+        if (signupName) signupName.value = '';
+        if (signupUser) signupUser.value = '';
+        if (signupPass) signupPass.value = '';
+      } else {
+        // Carry over any typed username/password from Sign In if Sign Up fields are empty
+        if (loginUser && loginUser.value.trim() && signupUser && !signupUser.value.trim()) {
+          signupUser.value = loginUser.value.trim();
+        }
+        if (loginPass && loginPass.value && signupPass && !signupPass.value) {
+          signupPass.value = loginPass.value;
+        }
+      }
+      if (signupName) signupName.focus();
+    }
+
+    welcomeTabController = { showSignIn, showSignUp };
+
+    if (tabSignIn) tabSignIn.addEventListener('click', () => showSignIn());
+    if (tabSignUp) tabSignUp.addEventListener('click', () => showSignUp(false));
+    if (linkToSignUp) linkToSignUp.addEventListener('click', () => showSignUp(false));
+    if (linkToSignIn) linkToSignIn.addEventListener('click', () => showSignIn());
+
+    if (state.currentUser) {
+      if (screen) screen.classList.add('hidden');
+      document.body.classList.remove('pre-entry');
+    } else {
+      document.body.classList.add('pre-entry');
+      if (screen) {
+        screen.classList.remove('hidden');
+        screen.classList.remove('leaving');
+      }
+    }
+
+    async function handleLogin() {
+      const username = loginUser ? loginUser.value.trim() : '';
+      const password = loginPass ? loginPass.value : '';
+
+      if (!username || !password) {
+        showWelcomeAuthMessage("Please enter both username and password.", "error");
+        toast("Please enter both username and password", "error");
+        return;
+      }
+
+      if (loginBtn) loginBtn.disabled = true;
+      try {
+        await loginUserAccount(username, password);
+        if (screen) screen.classList.add('leaving');
+        document.body.classList.remove('pre-entry');
+        setTimeout(() => {
+          if (screen) screen.classList.add('hidden');
+        }, 600);
+      } catch (err) {
+        // notification already fired in loginUserAccount
+      } finally {
+        if (loginBtn) loginBtn.disabled = false;
+      }
+    }
+
+    async function handleSignup() {
+      let name = signupName ? signupName.value.trim() : '';
+      let username = signupUser ? signupUser.value.trim() : '';
+      const password = signupPass ? signupPass.value : '';
+
+      // Auto-derive name from username or username from name if one was left blank
+      if (!name && username) {
+        name = username.replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+      if (!username && name) {
+        username = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      }
+
+      if (!username || !password) {
+        showWelcomeAuthMessage("Please enter a username (or full name) and a password.", "error");
+        toast("Please enter a username and password", "error");
+        return;
+      }
+
+      const btnSpan = signupBtn ? signupBtn.querySelector('span') : null;
+      const origText = btnSpan ? btnSpan.textContent : 'Create Account';
+      if (signupBtn) signupBtn.disabled = true;
+      if (btnSpan) btnSpan.textContent = 'Creating Account…';
+
+      try {
+        await signupUserAccount(name, username, 'Personal & Chic', password);
+        if (signupName) signupName.value = '';
+        if (signupUser) signupUser.value = '';
+        if (signupPass) signupPass.value = '';
+        if (screen) screen.classList.add('leaving');
+        document.body.classList.remove('pre-entry');
+        setTimeout(() => {
+          if (screen) screen.classList.add('hidden');
+        }, 600);
+      } catch (err) {
+        // notification already fired in signupUserAccount
+      } finally {
+        if (signupBtn) signupBtn.disabled = false;
+        if (btnSpan) btnSpan.textContent = origText;
+      }
+    }
+
+    if (loginBtn) loginBtn.addEventListener('click', handleLogin);
+    if (loginPass) loginPass.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
+    if (loginUser) loginUser.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
+
+    if (signupBtn) signupBtn.addEventListener('click', handleSignup);
+    if (signupName) signupName.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleSignup(); });
+    if (signupUser) signupUser.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleSignup(); });
+    if (signupPass) signupPass.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleSignup(); });
+  }
+
   /* ----------------------------------------------------------------
      INIT
      ---------------------------------------------------------------- */
-  
-  initWelcomeScreen();
-  
+
   (async function init() {
     await checkHealth();
-    refreshDashboard();
+    await loadUsers();
+
+    // Check if previously logged in with valid token
+    const cached = localStorage.getItem(USER_KEY);
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (cached && token) {
+      try {
+        state.currentUser = JSON.parse(cached);
+      } catch (_) {
+        state.currentUser = null;
+      }
+    } else {
+      state.currentUser = null;
+    }
+
+    initWelcomeScreen();
+    if (state.currentUser) {
+      renderUserBar();
+      refreshDashboard();
+    }
   })();

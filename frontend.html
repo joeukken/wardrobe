@@ -117,8 +117,45 @@ body.pre-entry .masthead, body.pre-entry main{ visibility:hidden; }
   opacity:0; animation:welcome-rise .8s ease forwards; animation-delay:.48s;
 }
 .welcome-form{
-  opacity:0; animation:welcome-rise .8s ease forwards; animation-delay:.68s;
-  display:flex; flex-direction:column; align-items:center; gap:14px;
+  display:flex; flex-direction:column; align-items:center; gap:14px; width:100%;
+}
+.welcome-tabs{
+  display:inline-flex;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(248,244,236,.18);
+  border-radius:var(--radius-pill);
+  padding:4px;
+  gap:4px;
+  margin-bottom:10px;
+}
+.welcome-tab-btn{
+  all:unset;
+  cursor:pointer;
+  padding:7px 20px;
+  border-radius:var(--radius-pill);
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:rgba(248,244,236,.65);
+  transition:all .2s ease;
+}
+.welcome-tab-btn.active{
+  background:rgba(255,255,255,.2);
+  color:var(--ivory);
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+}
+.welcome-toggle-link{
+  all:unset;
+  cursor:pointer;
+  font-size:12px;
+  color:rgba(248,244,236,.65);
+  text-decoration:underline;
+  margin-top:6px;
+  transition:color .2s;
+}
+.welcome-toggle-link:hover{
+  color:var(--ivory);
 }
 .welcome-label{ font-size:10px; color:rgba(248,244,236,.55); }
 .welcome-input{
@@ -418,6 +455,26 @@ main{ padding:0 40px 100px; max-width:1280px; margin:0 auto; }
 .chip.active{color:var(--ivory); background:var(--grad-accent);}
 .chip:hover:not(.active){ background:var(--stone); color:var(--ink); }
 
+.closet-occasion-filter-bar{
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  margin-bottom:26px; padding:12px 20px;
+  background:rgba(255, 255, 255, 0.6);
+  border-radius:var(--radius-pill);
+  border:1px solid rgba(27, 20, 15, 0.08);
+  box-shadow:0 1px 3px rgba(27,20,15,0.03);
+}
+.occasion-bar-title{
+  font-size:10.5px; text-transform:uppercase; color:var(--charcoal-soft); font-weight:600; letter-spacing:0.08em;
+}
+.occasion-pills{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.occ-badge{
+  display:inline-block; font-size:9.5px; text-transform:uppercase; letter-spacing:0.06em;
+  padding:2px 8px; border-radius:10px; background:var(--blush); color:var(--scarlet);
+  font-weight:600;
+}
+
 .rack-grid{
   display:grid;
   grid-template-columns:repeat(auto-fill, minmax(200px,1fr));
@@ -593,10 +650,11 @@ input[type=range]::-webkit-slider-thumb{
 .score-ring .score-num{ font-family:'Fraunces',serif; font-style:italic; font-size:24px;
   background:var(--grad-accent); -webkit-background-clip:text; background-clip:text; color:transparent; }
 .featured-body{ padding:26px 24px; }
-.featured-imgs{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
-.featured-imgs .piece{ flex:1; min-width:120px; max-width:180px; }
-.featured-imgs .piece img{ width:100%; aspect-ratio:4/5; object-fit:cover; border-radius:var(--radius); background:#fff; box-shadow:var(--shadow-sm); }
-.featured-imgs .piece .piece-cat{ font-size:9.5px; color:var(--charcoal-soft); text-transform:capitalize; margin-top:6px; text-align:center; }
+.featured-imgs{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+.featured-imgs .piece{ flex:1; min-width:130px; max-width:200px; background:var(--paper); padding:10px; border-radius:var(--radius); box-shadow:var(--shadow-sm); border:1px solid rgba(27,20,15,.06); }
+.featured-imgs .piece img{ width:100%; aspect-ratio:4/5; object-fit:cover; border-radius:var(--radius-sm); background:#fff; }
+.featured-imgs .piece .piece-name{ font-family:'Fraunces',serif; font-style:italic; font-size:13px; color:var(--ink); margin-top:8px; text-align:center; line-height:1.25; }
+.featured-imgs .piece .piece-cat{ font-size:9.5px; color:var(--scarlet); text-transform:uppercase; letter-spacing:.06em; font-weight:600; margin-top:4px; text-align:center; }
 .explanation{ font-size:13.5px; color:var(--charcoal); font-style:italic; font-family:'Fraunces',serif; padding:16px 18px; background:var(--blush); border-radius:var(--radius); border-left:3px solid var(--scarlet); margin-bottom:22px; }
 .score-breakdown{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
 .score-breakdown .sb-item{ font-size:10px; color:var(--charcoal-soft); background:var(--ivory); padding:10px 14px; border-radius:var(--radius-sm); }
@@ -650,20 +708,22 @@ input[type=range]::-webkit-slider-thumb{
 }
 .cal-cell{
   border-bottom:1px solid rgba(27,20,15,.06); border-right:1px solid rgba(27,20,15,.06);
-  min-height:104px; padding:12px;
+  min-height:110px; padding:10px 12px;
   cursor:pointer;
-  display:flex; flex-direction:column; gap:8px;
+  display:flex; flex-direction:column; gap:6px;
   transition:background .12s;
 }
 .cal-cell:nth-child(7n){ border-right:none; }
 .cal-cell.muted{ background:repeating-linear-gradient(135deg, var(--ivory), var(--ivory) 6px, var(--stone) 6px, var(--stone) 7px); cursor:default; }
 .cal-cell:hover:not(.muted){ background:var(--blush); }
 .cal-cell.today{ background:linear-gradient(180deg, var(--blush), transparent); }
+.cal-cell.has-plan{ background:rgba(122, 31, 43, 0.03); }
 .cal-cell.today .daynum::after{ content:''; display:inline-block; width:5px;height:5px;border-radius:50%;background:var(--scarlet); margin-left:6px; }
-.daynum{ font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--charcoal); display:flex; align-items:center; }
-.cal-thumbs{ display:flex; gap:3px; align-items:center; }
-.cal-thumbs img{ width:22px; height:26px; object-fit:cover; border-radius:4px; }
-.cal-worn-badge{ font-size:8px; background:var(--green); color:var(--ivory); padding:2px 7px; border-radius:var(--radius-pill); }
+.daynum{ font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--charcoal); display:flex; align-items:center; justify-content:space-between; }
+.cal-thumbs{ display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
+.cal-thumbs img{ width:28px; height:36px; object-fit:cover; border-radius:4px; box-shadow:0 1px 3px rgba(0,0,0,.1); border:1px solid rgba(27,20,15,.08); }
+.cal-dress-label{ font-family:'Fraunces',serif; font-style:italic; font-size:11px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.2; }
+.cal-worn-badge{ font-size:8px; background:var(--green); color:var(--ivory); padding:2px 7px; border-radius:var(--radius-pill); width:fit-content; }
 
 /* look picker inside calendar modal */
 .tab-row{ display:flex; gap:8px; margin-bottom:18px; background:var(--ivory); padding:5px; border-radius:var(--radius-pill); width:fit-content; }
@@ -681,10 +741,11 @@ input[type=range]::-webkit-slider-thumb{
 .look-option .mini-imgs img{ width:32px; height:38px; object-fit:cover; border-radius:6px; }
 .look-option .meta{ flex:1; font-size:11.5px; color:var(--charcoal-soft); }
 .look-option .meta b{ font-family:'Fraunces',serif; font-style:italic; color:var(--ink); display:block; font-size:15px; font-weight:470; }
-.pick-item-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(76px,1fr)); gap:10px; max-height:280px; overflow:auto; }
-.pick-item{ cursor:pointer; border:2px solid transparent; border-radius:var(--radius-sm); overflow:hidden; }
-.pick-item.selected{ border-color:var(--scarlet); }
-.pick-item img{ width:100%; aspect-ratio:4/5; object-fit:cover; }
+.pick-item-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:10px; max-height:300px; overflow:auto; padding:2px; }
+.pick-item{ cursor:pointer; border:2px solid transparent; border-radius:var(--radius-sm); overflow:hidden; background:var(--paper); padding:4px; transition:border-color .15s, transform .15s; }
+.pick-item.selected{ border-color:var(--scarlet); background:var(--blush); }
+.pick-item img{ width:100%; aspect-ratio:4/5; object-fit:cover; border-radius:6px; }
+.pick-item .pick-name{ font-size:10px; font-family:'Fraunces',serif; font-style:italic; color:var(--ink); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center; }
 .worn-toggle-row{ display:flex; align-items:center; justify-content:space-between; padding:14px 0; border-top:1px solid rgba(27,20,15,.08); margin-top:8px; }
 
 /* ================================================================
@@ -729,7 +790,7 @@ input[type=range]::-webkit-slider-thumb{
 /* ================================================================
    TOASTS
    ================================================================ */
-.toast-stack{ position:fixed; bottom:24px; right:24px; display:flex; flex-direction:column; gap:8px; z-index:200; align-items:flex-end; max-width:90vw;}
+.toast-stack{ position:fixed; bottom:24px; right:24px; display:flex; flex-direction:column; gap:8px; z-index:2000; align-items:flex-end; max-width:90vw;}
 .toast{
   background:var(--ink); color:var(--ivory);
   padding:13px 20px; font-size:12.5px; border-radius:var(--radius-pill);
@@ -739,6 +800,125 @@ input[type=range]::-webkit-slider-thumb{
 .toast.error{ background:var(--scarlet); }
 .toast.success{ background:var(--green); }
 @keyframes toast-in{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+
+.welcome-auth-msg{
+  width:100%; max-width:320px; margin:0 auto 10px;
+  padding:10px 16px; border-radius:14px;
+  font-size:12.5px; line-height:1.4; text-align:center;
+  background:rgba(196,20,60,.22); border:1px solid rgba(196,20,60,.55);
+  color:#ffd6de;
+}
+.welcome-auth-msg.success{
+  background:rgba(63,90,66,.35); border-color:rgba(110,168,116,.6);
+  color:#d9f5dc;
+}
+
+/* ================================================================
+   MULTI-USER & AUTH CONTROLS
+   ================================================================ */
+.masthead-right{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+}
+.user-pill{
+  display:flex; align-items:center; gap:9px;
+  background:var(--paper); border:1px solid rgba(27,20,15,.12);
+  padding:6px 14px 6px 8px; border-radius:var(--radius-pill);
+  box-shadow:var(--shadow-sm); cursor:pointer;
+  transition:all .15s ease;
+}
+.user-pill:hover{
+  border-color:var(--scarlet); transform:translateY(-1px); box-shadow:var(--shadow);
+}
+.user-avatar{
+  width:26px; height:26px; border-radius:50%;
+  background:var(--grad-accent); color:var(--ivory);
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:700;
+}
+.user-info{
+  display:flex; flex-direction:column; line-height:1.2;
+}
+.user-name{
+  font-size:12px; font-weight:600; color:var(--ink);
+}
+.user-persona{
+  font-size:9.5px; color:var(--charcoal-soft);
+}
+.btn-logout{
+  all:unset; cursor:pointer; font-size:10.5px; color:var(--scarlet);
+  background:var(--blush); padding:6px 12px; border-radius:var(--radius-pill);
+  transition:all .15s; font-weight:600;
+}
+.btn-logout:hover{
+  background:var(--scarlet); color:var(--ivory);
+}
+.btn-signup-nav{
+  all:unset; cursor:pointer; font-size:10.5px; color:var(--ivory);
+  background:var(--grad-accent); padding:6px 12px; border-radius:var(--radius-pill);
+  transition:all .15s; font-weight:600;
+}
+.btn-signup-nav:hover{
+  opacity:.9; transform:translateY(-1px);
+}
+.persona-banner{
+  background:linear-gradient(135deg, rgba(196,20,60,.06), rgba(184,134,11,.08));
+  border:1px solid rgba(196,20,60,.14); border-radius:var(--radius);
+  padding:14px 20px; margin-bottom:28px; display:flex; align-items:center; justify-content:space-between;
+  gap:16px; flex-wrap:wrap;
+}
+.persona-left{
+  display:flex; align-items:center; gap:14px;
+}
+.persona-tag{
+  background:var(--grad-accent); color:var(--ivory);
+  font-size:10px; padding:4px 10px; border-radius:var(--radius-pill);
+  font-weight:600; letter-spacing:.05em; text-transform:uppercase;
+}
+.persona-desc{
+  font-size:13px; color:var(--charcoal); font-style:italic; font-family:'Fraunces', serif;
+}
+.persona-details{
+  font-size:11px; color:var(--charcoal-soft); display:flex; gap:12px;
+}
+
+/* User Switcher Modal Grid */
+.user-card-grid{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));
+  gap:14px; max-height:60vh; overflow-y:auto; padding:6px 2px;
+}
+.user-card{
+  background:var(--paper); border:1px solid rgba(27,20,15,.08);
+  border-radius:var(--radius); padding:14px; cursor:pointer;
+  transition:all .18s ease; text-align:left;
+  display:flex; flex-direction:column; gap:6px;
+}
+.user-card:hover{
+  border-color:var(--scarlet); transform:translateY(-2px); box-shadow:var(--shadow);
+}
+.user-card.active{
+  border:2px solid var(--scarlet); background:linear-gradient(145deg, #fff, var(--blush));
+}
+.user-card-head{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+}
+.user-card-title{
+  font-size:14px; font-weight:600; color:var(--ink);
+}
+.user-card-role{
+  font-size:11px; color:var(--charcoal-soft);
+}
+.user-card-badge{
+  font-size:10px; background:var(--blush); color:var(--scarlet-deep);
+  padding:2px 8px; border-radius:var(--radius-pill); font-weight:600;
+}
+.user-card-desc{
+  font-size:11px; color:var(--charcoal); font-style:italic;
+  line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.user-card-meta{
+  font-size:10px; color:var(--charcoal-soft); margin-top:auto;
+  display:flex; justify-content:space-between; padding-top:6px; border-top:1px dashed rgba(27,20,15,.08);
+}
 </style>
 
 </head>
@@ -752,17 +932,38 @@ input[type=range]::-webkit-slider-thumb{
   <div class="welcome-orb orb-2"></div>
   <div class="welcome-orb orb-3"></div>
   <div class="welcome-content">
-    <div class="welcome-eyebrow tracked">Your ai stylist</div>
+    <div class="welcome-eyebrow tracked" id="welcomeEyebrow">Welcome to Muse</div>
     <h1 class="welcome-wordmark">Muse<span class="wordmark-dot">.</span></h1>
-    <p class="welcome-tagline serif">Every piece you own, one considered outfit at a time.</p>
+    <p class="welcome-tagline serif" id="welcomeTagline">Sign in to your personal wardrobe account.</p>
 
-    <div class="welcome-form">
-      <label class="welcome-label tracked" for="welcomeNameInput">What should we call you?</label>
-      <input type="text" id="welcomeNameInput" class="welcome-input" placeholder="Your name" autocomplete="off" />
-      <button class="welcome-enter-btn" id="welcomeEnterBtn">
-        <span id="welcomeEnterLabel">Step into your closet</span>
+    <div class="welcome-tabs">
+      <button type="button" class="welcome-tab-btn active" id="tabSignIn">Sign In</button>
+      <button type="button" class="welcome-tab-btn" id="tabSignUp">Sign Up</button>
+    </div>
+
+    <div class="welcome-auth-msg" id="welcomeAuthMsg" style="display:none;"></div>
+
+    <!-- Sign In Form -->
+    <div class="welcome-form" id="signInForm">
+      <input type="text" id="loginUsernameInput" class="welcome-input" placeholder="Username" autocomplete="username" />
+      <input type="password" id="loginPasswordInput" class="welcome-input" placeholder="Password" autocomplete="current-password" />
+      <button type="button" class="welcome-enter-btn" id="welcomeLoginBtn">
+        <span>Sign In</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </button>
+      <button type="button" class="welcome-toggle-link" id="linkToSignUp">Don't have an account? Sign Up</button>
+    </div>
+
+    <!-- Sign Up Form -->
+    <div class="welcome-form" id="signUpForm" style="display:none;">
+      <input type="text" id="signupNameInput" class="welcome-input" placeholder="Full Name" autocomplete="name" />
+      <input type="text" id="signupUsernameInput" class="welcome-input" placeholder="Username" autocomplete="username" />
+      <input type="password" id="signupPasswordInput" class="welcome-input" placeholder="Password" autocomplete="new-password" />
+      <button type="button" class="welcome-enter-btn" id="welcomeSignupBtn">
+        <span>Create Account</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+      <button type="button" class="welcome-toggle-link" id="linkToSignIn">Already have an account? Sign In</button>
     </div>
   </div>
 </div>
@@ -772,11 +973,18 @@ input[type=range]::-webkit-slider-thumb{
      ============================================================ -->
 <header class="masthead">
   <div class="masthead-top">
-    <span class="wordmark">Muse<span class="wordmark-dot">.</span></span>
-    <div class="masthead-status" id="statusPill" title="Click to edit API address">
-      <span class="status-dot pending" id="statusDot"></span>
-      <span class="tracked" id="statusText">Checking backend</span>
-      <input type="text" class="api-base-input" id="apiBaseInput" style="display:none" placeholder="http://127.0.0.1:8000" />
+    <div style="display:flex; align-items:baseline; gap:16px;">
+      <span class="wordmark">Muse<span class="wordmark-dot">.</span></span>
+    </div>
+    
+    <div class="masthead-right">
+      <div class="user-pill" id="userProfileBtn" title="Current Active Account">
+        <div class="user-avatar" id="navUserAvatar">E</div>
+        <div class="user-info">
+          <span class="user-name" id="navUserName">Emma Watson</span>
+        </div>
+        <button class="btn-logout" id="logoutBtn" title="Log out and sign in with a different account">Log Out</button>
+      </div>
     </div>
   </div>
   <nav class="masthead-nav">
@@ -806,6 +1014,16 @@ input[type=range]::-webkit-slider-thumb{
     </div>
 
     <div id="homeBanner"></div>
+
+    <div class="persona-banner" id="dashboardPersonaBanner" style="display:none;">
+      <div class="persona-left">
+        <div>
+          <div class="persona-desc" id="bannerUserBio"></div>
+          <div class="persona-details" id="bannerUserDetails"></div>
+        </div>
+      </div>
+      <button class="btn btn-ghost" id="bannerLogoutBtn" style="padding:8px 16px; font-size:11px;">Sign Out</button>
+    </div>
 
     <div class="stat-grid" id="statGrid">
       <div class="stat-card"><div class="num skeleton" style="width:40px;height:34px;"></div><div class="label">pieces in closet</div></div>
@@ -877,6 +1095,23 @@ input[type=range]::-webkit-slider-thumb{
         <option value="name">Name (A–Z)</option>
         <option value="category">Category</option>
       </select>
+    </div>
+
+    <!-- OCCASION FILTER BAR (Matching User's Occasions) -->
+    <div class="closet-occasion-filter-bar">
+      <span class="occasion-bar-title tracked">Occasion:</span>
+      <div class="occasion-pills" id="closetOccasionFilter">
+        <button class="occasion-chip selected" data-occ="all">all</button>
+        <button class="occasion-chip" data-occ="casual">casual</button>
+        <button class="occasion-chip" data-occ="college">college</button>
+        <button class="occasion-chip" data-occ="travel">travel</button>
+        <button class="occasion-chip" data-occ="office">office</button>
+        <button class="occasion-chip" data-occ="formal">formal</button>
+        <button class="occasion-chip" data-occ="wedding">wedding</button>
+        <button class="occasion-chip" data-occ="party">party</button>
+        <button class="occasion-chip" data-occ="date">date</button>
+        <button class="occasion-chip" data-occ="workout">workout</button>
+      </div>
     </div>
 
     <div class="rack-grid" id="rackGrid"></div>
@@ -1024,6 +1259,6 @@ input[type=range]::-webkit-slider-thumb{
 
 <div class="toast-stack" id="toastStack"></div>
 
-<script src="./app.js"></script>
+<script src="./app.js?v=home_on_login_20261013"></script>
 </body>
 </html>
